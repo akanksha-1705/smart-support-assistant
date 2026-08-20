@@ -120,7 +120,7 @@ export default function App() {
   );
 }
 
-const styles: React.CSSProperties = {} as React.CSSProperties;
+const styles: Record<string, React.CSSProperties> = {};
 
 (styles as any).container = {
   width: "100%",
