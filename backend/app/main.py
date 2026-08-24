@@ -1,83 +1,84 @@
-# backend/app/main.py
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
-from app.database import Base, engine, SessionLocal
-from app import models
+from sqlalchemy.orm import Session
+
+from .database import Base, engine, get_db
+from . import models
+from .models import Conversation, Message
+from .schemas import ChatRequest, ChatResponse, HealthResponse
+
+
+# Create database tables automatically when the application starts.
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Smart Support Assistant",
-    description="API for AI-powered customer support",
-    version="1.0.0"
+    title="Smart Support Assistant API",
+    description="Backend API for the Smart Support Assistant",
+    version="1.0.0",
 )
 
-# Add CORS middleware to allow requests from frontend
+# Allow the Vite frontend to communicate with the FastAPI backend.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-class ChatRequest(BaseModel):
-    message: str
-    conversation_id: Optional[str] = None
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    conversation_id: str
-
-
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 def health():
     return {"status": "ok"}
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+def chat(request: ChatRequest, db: Session = Depends(get_db)):
+    # Use an existing conversation if conversation_id was provided.
+    if request.conversation_id is not None:
+        conversation = (
+            db.query(Conversation)
+            .filter(Conversation.id == request.conversation_id)
+            .first()
+        )
 
-    db = SessionLocal()
+        if conversation is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation not found.",
+            )
 
-    if req.conversation_id is not None:
-        conversation = db.query(models.Conversation).filter(
-            models.Conversation.id == req.conversation_id
-        ).first()
+    # Otherwise create a new conversation.
     else:
-        conversation = None
-
-    if conversation is None:
-        conversation = models.Conversation()
+        conversation = Conversation()
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
 
-        message = models.Message(
-            conversation_id=conversation.id,
-            role="user",
-            content=req.message
-        )
+    # Save the user's message.
+    user_message = Message(
+        conversation_id=conversation.id,
+        role="user",
+        content=request.message,
+    )
 
-    db.add(message)
+    db.add(user_message)
     db.commit()
 
-    assistant_message = models.Message(
+    # Day 11 uses an echo response.
+    assistant_message = Message(
         conversation_id=conversation.id,
         role="assistant",
-        content=f"Echo: {req.message}"
+        content=request.message,
     )
+
     db.add(assistant_message)
     db.commit()
 
     return ChatResponse(
-        reply=f"Echo: {req.message}",
-        conversation_id=str(conversation.id)
+        conversation_id=conversation.id,
+        message=request.message,
     )
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

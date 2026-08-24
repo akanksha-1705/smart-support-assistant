@@ -1,13 +1,14 @@
 import { useState } from "react";
-import axios from "axios";
 import "./App.css";
 
 interface ChatRequest {
+  conversation_id: number;
   message: string;
 }
 
 interface ChatResponse {
-  reply: string;
+  conversation_id: number;
+  message: string;
 }
 
 interface Message {
@@ -15,49 +16,68 @@ interface Message {
   content: string;
 }
 
-export default function App() {
+function App() {
+  const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const conversationId = 1;
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!message.trim() || loading) {
+      return;
+    }
 
-    const userMessage: Message = {
-      role: "user",
-      content: input,
+    const userMessage = message;
+
+    setMessages((previous) => [
+      ...previous,
+      {
+        role: "user",
+        content: userMessage,
+      },
+    ]);
+
+    setMessage("");
+    setError("");
+    setLoading(true);
+
+    const request: ChatRequest = {
+      conversation_id: conversationId,
+      message: userMessage,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setLoading(true);
-    setError("");
-
     try {
-      const request: ChatRequest = {
-        message: userMessage.content,
-      };
+      const response = await fetch("http://127.0.0.1:8000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
 
-      const res = await axios.post<ChatResponse>(
-        "http://localhost:8000/chat",
-        request
-      );
+      if (!response.ok) {
+        throw new Error("Backend request failed");
+      }
 
-      const botMessage: Message = {
-        role: "assistant",
-        content: res.data.reply,
-      };
+      const data: ChatResponse = await response.json();
 
-      setMessages((prev) => [...prev, botMessage]);
-    } catch (err) {
-      setError("Backend is not responding ❌");
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content: data.message,
+        },
+      ]);
+    } catch (error) {
+      setError("Unable to connect to the backend.");
 
-      setMessages((prev) => [
-        ...prev,
+      setMessages((previous) => [
+        ...previous,
         {
           role: "error",
-          content: "Something went wrong with backend",
+          content: "Unable to connect to the backend.",
         },
       ]);
     } finally {
@@ -65,53 +85,69 @@ export default function App() {
     }
   };
 
-  return (
-    <div style={styles.container}>
-      <h2>Smart Support Chat</h2>
+  const handleKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key === "Enter") {
+      sendMessage();
+    }
+  };
 
-      <div style={styles.chatBox}>
+  return (
+    <div className="app">
+      <h1>Smart Support Assistant</h1>
+
+      <div className="chat-container">
+        {messages.length === 0 && (
+          <p className="empty-message">
+            Start a conversation...
+          </p>
+        )}
+
         {messages.map((msg, index) => (
           <div
             key={index}
-            style={{
-              ...styles.message,
-              alignSelf:
-                msg.role === "user" ? "flex-end" : "flex-start",
-              backgroundColor:
-                msg.role === "user"
-                  ? "#DCF8C6"
-                  : msg.role === "error"
-                  ? "#ffcccc"
-                  : "#f1f1f1",
-            }}
+            className={`message ${msg.role}`}
           >
-            {msg.content}
+            <strong>
+              {msg.role === "user"
+                ? "You"
+                : msg.role === "assistant"
+                ? "Assistant"
+                : "Error"}
+            </strong>
+
+            <p>{msg.content}</p>
           </div>
         ))}
 
-        {loading && <div style={styles.loading}>Typing...</div>}
+        {loading && (
+          <div className="message assistant">
+            <strong>Assistant</strong>
+            <p>Sending...</p>
+          </div>
+        )}
       </div>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {error && (
+        <div className="error-message">
+          {error}
+        </div>
+      )}
 
-      <div style={styles.inputBox}>
+      <div className="input-area">
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              sendMessage();
-            }
-          }}
-          placeholder="Type a message..."
+          type="text"
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type your message..."
           disabled={loading}
-          style={styles.input}
         />
 
         <button
           onClick={sendMessage}
-          disabled={loading}
-          style={styles.button}
+          disabled={loading || !message.trim()}
         >
           {loading ? "Sending..." : "Send"}
         </button>
@@ -120,47 +156,4 @@ export default function App() {
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {};
-
-(styles as any).container = {
-  width: "100%",
-  maxWidth: "600px",
-  margin: "0 auto",
-  fontFamily: "Arial",
-};
-
-(styles as any).chatBox = {
-  height: "400px",
-  border: "1px solid #ccc",
-  padding: "10px",
-  overflowY: "auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-};
-
-(styles as any).message = {
-  padding: "10px",
-  borderRadius: "10px",
-  maxWidth: "70%",
-};
-
-(styles as any).inputBox = {
-  display: "flex",
-  marginTop: "10px",
-};
-
-(styles as any).input = {
-  flex: 1,
-  padding: "10px",
-};
-
-(styles as any).button = {
-  padding: "10px 15px",
-  cursor: "pointer",
-};
-
-(styles as any).loading = {
-  fontStyle: "italic",
-  color: "gray",
-};
+export default App;
