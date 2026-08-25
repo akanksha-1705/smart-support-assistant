@@ -1,80 +1,451 @@
-.app {
-  max-width: 800px;
-  margin: 40px auto;
-  padding: 20px;
-  font-family: 'Times New Roman', Times, serif, sans-serif;
+/* ============================= */
+/* GLOBAL */
+/* ============================= */
+
+* {
+  box-sizing: border-box;
 }
+
+body {
+  margin: 0;
+  background: #f8f5ff;
+  color: #30263d;
+  font-family: "Times New Roman", Times, serif;
+}
+
+
+/* ============================= */
+/* MAIN APP */
+/* ============================= */
+
+.app {
+  max-width: 850px;
+  margin: 40px auto;
+  padding: 30px;
+}
+
+
+/* ============================= */
+/* MAIN HEADING */
+/* ============================= */
 
 h1 {
   text-align: center;
+  color: #5b3f78;
+  font-size: 34px;
+  margin-bottom: 30px;
 }
+
+
+/* ============================= */
+/* CHAT CONTAINER */
+/* ============================= */
 
 .chat-container {
   min-height: 400px;
-  border: 1px solid #ccc;
-  border-radius: 10px;
+  border: 1px solid #d8c7ed;
+  border-radius: 18px;
   padding: 20px;
   margin-bottom: 20px;
+
+  background: #ffffff;
+
+  box-shadow: 0 8px 25px rgba(126, 91, 157, 0.12);
 }
+
+
+/* ============================= */
+/* EMPTY MESSAGE */
+/* ============================= */
 
 .empty-message {
   text-align: center;
-  color: #777;
+  color: #7b6a88;
+  font-size: 16px;
 }
+
+
+/* ============================= */
+/* CHAT MESSAGES */
+/* ============================= */
 
 .message {
   max-width: 70%;
-  padding: 10px 15px;
+  padding: 12px 16px;
   margin-bottom: 15px;
-  border-radius: 10px;
+  border-radius: 16px;
+
+  color: #30263d;
 }
 
 .message p {
   margin: 5px 0 0;
+  line-height: 1.5;
 }
+
+
+/* USER MESSAGE */
 
 .message.user {
   margin-left: auto;
-  background: #9bb8df;
+
+  background: #e5d5f7;
+
+  border: 1px solid #d2bde9;
+
   text-align: right;
 }
 
+
+/* ASSISTANT MESSAGE */
+
 .message.assistant {
   margin-right: auto;
-  background: #e5e7eb;
+
+  background: #f1eafa;
+
+  border: 1px solid #dfd2ed;
 }
+
+
+/* ERROR MESSAGE */
 
 .message.error {
   margin-right: auto;
-  background: #fee2e2;
-  color: #b91c1c;
+
+  background: #fbe4ee;
+
+  border: 1px solid #e8b8cb;
+
+  color: #7d263f;
 }
 
+
+/* ============================= */
+/* ERROR MESSAGE BELOW CHAT */
+/* ============================= */
+
 .error-message {
-  color: #b91c1c;
-  margin-bottom: 10px;
+  color: #7d263f;
+
+  background: #fbe4ee;
+
+  border: 1px solid #e8b8cb;
+
+  padding: 10px 14px;
+
+  border-radius: 10px;
+
+  margin-bottom: 15px;
 }
+
+
+/* ============================= */
+/* INPUT AREA */
+/* ============================= */
 
 .input-area {
   display: flex;
   gap: 10px;
+  margin-bottom: 35px;
 }
+
+
+/* TEXT INPUT */
 
 .input-area input {
   flex: 1;
-  padding: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+
+  padding: 13px 15px;
+
+  border: 1px solid #cdb9df;
+
+  border-radius: 10px;
+
+  background: #ffffff;
+
+  color: #30263d;
+
+  font-family: "Times New Roman", Times, serif;
+
+  font-size: 16px;
+
+  outline: none;
 }
 
-.input-area button {
-  padding: 12px 20px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
+
+/* INPUT FOCUS */
+
+.input-area input:focus {
+  border-color: #9b72bd;
+
+  box-shadow: 0 0 0 3px #eee4f7;
 }
+
+
+/* SEND BUTTON */
+
+.input-area button {
+  padding: 12px 22px;
+
+  border: none;
+
+  border-radius: 10px;
+
+  cursor: pointer;
+
+  background: #9b72bd;
+
+  color: #ffffff;
+
+  font-family: "Times New Roman", Times, serif;
+
+  font-size: 16px;
+
+  font-weight: bold;
+}
+
+
+/* SEND BUTTON HOVER */
+
+.input-area button:hover {
+  background: #8359a6;
+}
+
+
+/* DISABLED BUTTON */
 
 .input-area button:disabled {
   cursor: not-allowed;
+
   opacity: 0.6;
+}
+
+
+/* ============================= */
+/* DOCUMENT SUMMARY SECTION */
+/* ============================= */
+
+.summary-section {
+  margin-top: 30px;
+
+  padding: 25px;
+
+  border: 1px solid #d8c7ed;
+
+  border-radius: 18px;
+
+  background: #ffffff;
+
+  box-shadow: 0 8px 25px rgba(126, 91, 157, 0.12);
+}
+
+
+/* SUMMARY HEADING */
+
+.summary-section h2 {
+  margin-top: 0;
+
+  margin-bottom: 20px;
+
+  text-align: center;
+
+  color: #5b3f78;
+
+  font-size: 26px;
+}
+
+
+/* DOCUMENT ID INPUT */
+
+.summary-section > input {
+  width: 100%;
+
+  padding: 13px 15px;
+
+  border: 1px solid #cdb9df;
+
+  border-radius: 10px;
+
+  background: #ffffff;
+
+  color: #30263d;
+
+  font-family: "Times New Roman", Times, serif;
+
+  font-size: 16px;
+
+  outline: none;
+
+  margin-bottom: 12px;
+}
+
+
+/* SUMMARY INPUT FOCUS */
+
+.summary-section > input:focus {
+  border-color: #9b72bd;
+
+  box-shadow: 0 0 0 3px #eee4f7;
+}
+
+
+/* GENERATE BUTTON */
+
+.summary-section > button {
+  padding: 12px 22px;
+
+  border: none;
+
+  border-radius: 10px;
+
+  cursor: pointer;
+
+  background: #c9a9e9;
+
+  color: #30263d;
+
+  font-family: "Times New Roman", Times, serif;
+
+  font-size: 16px;
+
+  font-weight: bold;
+}
+
+
+/* GENERATE BUTTON HOVER */
+
+.summary-section > button:hover {
+  background: #b991dc;
+}
+
+
+/* DISABLED SUMMARY BUTTON */
+
+.summary-section > button:disabled {
+  cursor: not-allowed;
+
+  opacity: 0.6;
+}
+
+
+/* ============================= */
+/* SUMMARY RESULT */
+/* ============================= */
+
+.summary-result {
+  margin-top: 25px;
+
+  padding: 25px;
+
+  border-radius: 15px;
+
+  border: 1px solid #d9c8ea;
+
+  background: #faf7ff;
+
+  color: #30263d;
+
+  box-shadow: inset 0 0 15px rgba(126, 91, 157, 0.05);
+}
+
+
+/* SUMMARY TITLE */
+
+.summary-result h3 {
+  margin-top: 0;
+
+  margin-bottom: 20px;
+
+  color: #5b3f78;
+
+  font-size: 24px;
+}
+
+
+/* SUMMARY SUBHEADINGS */
+
+.summary-result h4 {
+  margin-top: 22px;
+
+  margin-bottom: 10px;
+
+  color: #694b82;
+
+  font-size: 18px;
+}
+
+
+/* SUMMARY PARAGRAPH */
+
+.summary-result p {
+  color: #30263d;
+
+  line-height: 1.7;
+
+  font-size: 16px;
+}
+
+
+/* SUMMARY LIST */
+
+.summary-result ul {
+  padding-left: 25px;
+
+  margin-bottom: 15px;
+}
+
+
+/* SUMMARY LIST ITEMS */
+
+.summary-result li {
+  color: #30263d;
+
+  line-height: 1.7;
+
+  margin-bottom: 8px;
+}
+
+
+/* ============================= */
+/* RESPONSIVE DESIGN */
+/* ============================= */
+
+@media (max-width: 700px) {
+
+  .app {
+    margin: 20px auto;
+
+    padding: 15px;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
+  .chat-container {
+    min-height: 300px;
+
+    padding: 15px;
+  }
+
+  .message {
+    max-width: 85%;
+  }
+
+  .input-area {
+    flex-direction: column;
+  }
+
+  .input-area button {
+    width: 100%;
+  }
+
+  .summary-section {
+    padding: 18px;
+  }
+
+  .summary-result {
+    padding: 18px;
+  }
 }

@@ -16,11 +16,23 @@ interface Message {
   content: string;
 }
 
+interface SummaryResponse {
+  title?: string;
+  summary?: string;
+  key_points?: string[];
+  keywords?: string[];
+}
+
 function App() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [documentId, setDocumentId] = useState("");
+  const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
 
   const conversationId = 1;
 
@@ -85,6 +97,53 @@ function App() {
     }
   };
 
+  const generateSummary = async () => {
+    if (!documentId.trim() || summaryLoading) {
+      return;
+    }
+
+    setSummaryLoading(true);
+    setSummaryError("");
+    setSummary(null);
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8001/documents/summary",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            document_id: documentId.trim(),
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      console.log("SUMMARY RESPONSE:", data);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail || "Unable to generate summary."
+        );
+      }
+
+      setSummary(data);
+    } catch (error) {
+      console.error("SUMMARY ERROR:", error);
+
+      setSummaryError(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate summary."
+      );
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLInputElement>
   ) => {
@@ -97,6 +156,7 @@ function App() {
     <div className="app">
       <h1>Smart Support Assistant</h1>
 
+      {/* CHAT SECTION */}
       <div className="chat-container">
         {messages.length === 0 && (
           <p className="empty-message">
@@ -139,7 +199,9 @@ function App() {
         <input
           type="text"
           value={message}
-          onChange={(event) => setMessage(event.target.value)}
+          onChange={(event) =>
+            setMessage(event.target.value)
+          }
           onKeyDown={handleKeyDown}
           placeholder="Type your message..."
           disabled={loading}
@@ -151,6 +213,96 @@ function App() {
         >
           {loading ? "Sending..." : "Send"}
         </button>
+      </div>
+
+      {/* DOCUMENT SUMMARY SECTION */}
+      <div className="summary-section">
+        <h2>Document Summary</h2>
+
+        <input
+          type="text"
+          value={documentId}
+          onChange={(event) =>
+            setDocumentId(event.target.value)
+          }
+          placeholder="Enter document ID"
+          disabled={summaryLoading}
+        />
+
+        <button
+          onClick={generateSummary}
+          disabled={
+            summaryLoading || !documentId.trim()
+          }
+        >
+          {summaryLoading
+            ? "Generating..."
+            : "Generate Summary"}
+        </button>
+
+        {/* LOADING */}
+        {summaryLoading && (
+          <div className="summary-result">
+            <h3>Generating Summary...</h3>
+            <p>
+              Please wait while the document is being
+              processed.
+            </p>
+          </div>
+        )}
+
+        {/* ERROR */}
+        {summaryError && (
+          <div className="error-message">
+            {summaryError}
+          </div>
+        )}
+
+        {/* RESULT */}
+        {!summaryLoading && summary && (
+          <div className="summary-result">
+            <h3>
+              {summary.title || "Document Summary"}
+            </h3>
+
+            <h4>Summary</h4>
+
+            <p>
+              {summary.summary ||
+                "No summary was returned."}
+            </p>
+
+            <h4>Key Points</h4>
+
+            {summary.key_points &&
+            summary.key_points.length > 0 ? (
+              <ul>
+                {summary.key_points.map(
+                  (point, index) => (
+                    <li key={index}>{point}</li>
+                  )
+                )}
+              </ul>
+            ) : (
+              <p>No key points returned.</p>
+            )}
+
+            <h4>Keywords</h4>
+
+            {summary.keywords &&
+            summary.keywords.length > 0 ? (
+              <ul>
+                {summary.keywords.map(
+                  (keyword, index) => (
+                    <li key={index}>{keyword}</li>
+                  )
+                )}
+              </ul>
+            ) : (
+              <p>No keywords returned.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

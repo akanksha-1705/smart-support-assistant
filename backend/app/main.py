@@ -1,6 +1,10 @@
 # backend/app/main.py
-
+# Day 16 Individual Feature - Document Summary
+# Author: Akanksha Panigrahi
 import os
+import json
+from fastapi.responses import JSONResponse
+from app.prompts.summary_prompt import SUMMARY_PROMPT
 
 from dotenv import load_dotenv
 
@@ -103,6 +107,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     conversation_id: str
+
+class SummaryRequest(BaseModel):
+    document_id: str
 
 
 # --------------------------------------------------
@@ -464,6 +471,118 @@ async def upload_document(
             status_code=500,
             detail=f"Document processing failed: {str(e)}"
         )
+
+# --------------------------------------------------
+# DOCUMENT SUMMARY FEATURE
+# Author: Akanksha
+# --------------------------------------------------
+
+@app.post("/documents/summary")
+def generate_document_summary(
+    request: SummaryRequest,
+    db=Depends(get_db)
+):
+
+    # Find the requested document
+    document = (
+        db.query(Document)
+        .filter(Document.id == request.document_id)
+        .first()
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found"
+        )
+
+    # Get all chunks belonging to this document
+    chunks = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.document_id == document.id
+        )
+        .order_by(DocumentChunk.chunk_index)
+        .all()
+    )
+
+    if not chunks:
+        raise HTTPException(
+            status_code=404,
+            detail="No document content found"
+        )
+
+    # Combine chunks into one document
+    document_text = "\n\n".join(
+        chunk.content
+        for chunk in chunks
+    )
+
+    try:
+        # Build the prompt
+        prompt = SUMMARY_PROMPT.format(
+            text=document_text
+        )
+
+        # Call Gemini
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=prompt
+        )
+
+        raw_response = response.text.strip()
+
+        # Remove markdown code fences if Gemini adds them
+        if raw_response.startswith("```json"):
+            raw_response = raw_response[7:]
+
+        if raw_response.startswith("```"):
+            raw_response = raw_response[3:]
+
+        if raw_response.endswith("```"):
+            raw_response = raw_response[:-3]
+
+        raw_response = raw_response.strip()
+
+        # Parse JSON
+        try:
+            result = json.loads(raw_response)
+
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=502,
+                detail="AI returned invalid JSON. Please try again."
+            )
+
+        # Make sure the required fields exist
+        required_fields = [
+            "title",
+            "summary",
+            "key_points",
+            "keywords"
+        ]
+
+        if not all(
+            field in result
+            for field in required_fields
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail="AI returned an invalid summary format."
+            )
+
+        return result
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        print("SUMMARY ERROR:", repr(e))
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to generate document summary: {str(e)}"
+    )
 
 
 # --------------------------------------------------
