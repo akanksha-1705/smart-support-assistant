@@ -58,3 +58,40 @@ def create_embeddings(chunks: list[str]):
         return []
 
     return embedding_model.encode(chunks).tolist()
+import os
+import numpy as np
+
+
+def retrieve_relevant_chunks(query_embedding, chunks, top_k=None):
+    """
+    Return the most relevant document chunks for a query.
+    """
+
+    if top_k is None:
+        top_k = int(os.getenv("RAG_TOP_K", "3"))
+
+    if not chunks:
+        return []
+
+    query_vector = np.array(query_embedding, dtype=float)
+
+    results = []
+
+    for chunk in chunks:
+        embedding = chunk.embedding
+
+        if isinstance(embedding, str):
+            import json
+            embedding = json.loads(embedding)
+
+        chunk_vector = np.array(embedding, dtype=float)
+
+        similarity = np.dot(query_vector, chunk_vector) / (
+            np.linalg.norm(query_vector) * np.linalg.norm(chunk_vector)
+        )
+
+        results.append((similarity, chunk))
+
+    results.sort(key=lambda x: x[0], reverse=True)
+
+    return results[:top_k]

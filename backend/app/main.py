@@ -1,21 +1,71 @@
 # backend/app/main.py
-from fastapi import FastAPI
+
+import os
+
+from dotenv import load_dotenv
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy import func
+
+from google import genai
+
 from app.database import Base, engine, SessionLocal
 from app import models
-from fastapi import UploadFile, File, HTTPException,Depends
-from sqlalchemy import func
 from .models import Document, DocumentChunk
 from .document_utils import extract_text, create_chunks, create_embeddings
+
+
+# --------------------------------------------------
+# Load environment variables
+# --------------------------------------------------
+
+load_dotenv()
+
+
+# --------------------------------------------------
+# Create database tables
+# --------------------------------------------------
+
 Base.metadata.create_all(bind=engine)
+
+
+# --------------------------------------------------
+# Configure Gemini
+# --------------------------------------------------
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise RuntimeError(
+        "GEMINI_API_KEY is not set. "
+        "Please check your backend/.env file."
+    )
+
+client = genai.Client(
+    api_key=GEMINI_API_KEY
+)
+
+
+# --------------------------------------------------
+# Database dependency
+# --------------------------------------------------
+
 def get_db():
     db = SessionLocal()
+
     try:
         yield db
+
     finally:
         db.close()
+
+
+# --------------------------------------------------
+# FastAPI application
+# --------------------------------------------------
 
 app = FastAPI(
     title="Smart Support Assistant",
@@ -23,15 +73,27 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware to allow requests from frontend
+
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000"
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# --------------------------------------------------
+# Request / Response Models
+# --------------------------------------------------
 
 class ChatRequest(BaseModel):
     message: str
@@ -43,50 +105,213 @@ class ChatResponse(BaseModel):
     conversation_id: str
 
 
+# --------------------------------------------------
+# Health Check
+# --------------------------------------------------
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
+# --------------------------------------------------
+# RAG CHAT
+# --------------------------------------------------
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
 
     db = SessionLocal()
 
-    if req.conversation_id is not None:
-        conversation = db.query(models.Conversation).filter(
-            models.Conversation.id == req.conversation_id
-        ).first()
-    else:
-        conversation = None
+    try:
 
-    if conversation is None:
-        conversation = models.Conversation()
-        db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
+        # ------------------------------------------
+        # Find existing conversation
+        # ------------------------------------------
 
-        message = models.Message(
+        if req.conversation_id:
+
+            conversation = (
+                db.query(models.Conversation)
+                .filter(
+                    models.Conversation.id == req.conversation_id
+                )
+                .first()
+            )
+
+        else:
+
+            conversation = None
+
+
+        # ------------------------------------------
+        # Create a new conversation
+        # ------------------------------------------
+
+        if conversation is None:
+
+            conversation = models.Conversation()
+
+            db.add(conversation)
+            db.commit()
+            db.refresh(conversation)
+
+
+        # ------------------------------------------
+        # Save user's message
+        # ------------------------------------------
+
+        user_message = models.Message(
             conversation_id=conversation.id,
             role="user",
             content=req.message
         )
 
-    db.add(message)
-    db.commit()
+        db.add(user_message)
+        db.commit()
 
-    assistant_message = models.Message(
-        conversation_id=conversation.id,
-        role="assistant",
-        content=f"Echo: {req.message}"
-    )
-    db.add(assistant_message)
-    db.commit()
 
-    return ChatResponse(
-        reply=f"Echo: {req.message}",
-        conversation_id=str(conversation.id)
-    )
+        # ------------------------------------------
+        # Create query embedding
+        # ------------------------------------------
+
+        question_embedding = create_embeddings(
+            [req.message]
+        )[0]
+
+
+        # ------------------------------------------
+        # Number of chunks to retrieve
+        # ------------------------------------------
+
+        top_k = int(
+            os.getenv(
+                "RAG_TOP_K",
+                "3"
+            )
+        )
+
+
+        # ------------------------------------------
+        # Retrieve relevant chunks
+        # ------------------------------------------
+
+        chunks = (
+            db.query(DocumentChunk)
+            .order_by(
+                DocumentChunk.embedding.cosine_distance(
+                    question_embedding
+                )
+            )
+            .limit(top_k)
+            .all()
+        )
+
+
+        # ------------------------------------------
+        # No documents available
+        # ------------------------------------------
+
+        if not chunks:
+
+            answer = (
+                "Not found in the uploaded documents."
+            )
+
+        else:
+
+            # --------------------------------------
+            # Combine retrieved chunks
+            # --------------------------------------
+
+            context = "\n\n".join(
+                chunk.content
+                for chunk in chunks
+            )
+
+
+            # --------------------------------------
+            # Grounded RAG prompt
+            # --------------------------------------
+
+            prompt = f"""
+You are a helpful customer support assistant.
+
+You MUST answer the user's question ONLY using
+the information provided in the document context.
+
+DOCUMENT CONTEXT:
+{context}
+
+USER QUESTION:
+{req.message}
+
+IMPORTANT RULE:
+If the answer is not present in the document context,
+reply exactly:
+
+Not found in the uploaded documents.
+
+Do not use outside knowledge.
+"""
+
+
+            # --------------------------------------
+            # Generate Gemini response
+            # --------------------------------------
+
+            try:
+
+                response = client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt
+                )
+
+                answer = response.text.strip()
+
+            except Exception as e:
+
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"LLM service unavailable: {str(e)}"
+                )
+
+
+        # ------------------------------------------
+        # Save assistant response
+        # ------------------------------------------
+
+        assistant_message = models.Message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=answer
+        )
+
+        db.add(assistant_message)
+        db.commit()
+
+
+        # ------------------------------------------
+        # Return response
+        # ------------------------------------------
+
+        return ChatResponse(
+            reply=answer,
+            conversation_id=str(
+                conversation.id
+            )
+        )
+
+
+    finally:
+
+        db.close()
+
+
+# --------------------------------------------------
+# DOCUMENT UPLOAD
+# --------------------------------------------------
+
 @app.post("/documents/upload")
 async def upload_document(
     file: UploadFile = File(...),
@@ -95,79 +320,169 @@ async def upload_document(
 
     filename = file.filename
 
-    if not filename.lower().endswith((".txt", ".pdf")):
+
+    # ----------------------------------------------
+    # Validate file type
+    # ----------------------------------------------
+
+    if not filename.lower().endswith(
+        (".txt", ".pdf")
+    ):
+
         raise HTTPException(
             status_code=400,
             detail="Only .txt and .pdf files are supported"
         )
 
+
     file_bytes = await file.read()
 
+
     try:
-        text = extract_text(filename, file_bytes)
-        chunks = create_chunks(text)
-        embeddings = create_embeddings(chunks)
+
+        # ------------------------------------------
+        # Extract document text
+        # ------------------------------------------
+
+        text = extract_text(
+            filename,
+            file_bytes
+        )
+
+
+        # ------------------------------------------
+        # Create chunks
+        # ------------------------------------------
+
+        chunks = create_chunks(
+            text
+        )
+
+
+        # ------------------------------------------
+        # Make sure document contains text
+        # ------------------------------------------
 
         if not chunks:
+
             raise HTTPException(
                 status_code=400,
                 detail="The uploaded document contains no readable text"
             )
 
+
+        # ------------------------------------------
+        # Create embeddings
+        # ------------------------------------------
+
+        embeddings = create_embeddings(
+            chunks
+        )
+
+
+        # ------------------------------------------
+        # Check whether document already exists
+        # ------------------------------------------
+
         existing_document = (
             db.query(Document)
-            .filter(Document.filename == filename)
+            .filter(
+                Document.filename == filename
+            )
             .first()
         )
 
+
+        # ------------------------------------------
+        # Delete old version
+        # ------------------------------------------
+
         if existing_document:
-            db.delete(existing_document)
+
+            db.delete(
+                existing_document
+            )
+
             db.commit()
 
-        document = Document(filename=filename)
+
+        # ------------------------------------------
+        # Create document record
+        # ------------------------------------------
+
+        document = Document(
+            filename=filename
+        )
 
         db.add(document)
         db.commit()
         db.refresh(document)
 
+
+        # ------------------------------------------
+        # Store chunks and embeddings
+        # ------------------------------------------
+
         for index, (chunk, embedding) in enumerate(
             zip(chunks, embeddings)
         ):
+
             document_chunk = DocumentChunk(
                 document_id=document.id,
                 content=chunk,
                 chunk_index=index,
-                embedding=embedding,
+                embedding=embedding
             )
 
             db.add(document_chunk)
 
+
         db.commit()
+
+
+        # ------------------------------------------
+        # Return upload result
+        # ------------------------------------------
 
         return {
             "message": "Document uploaded successfully",
             "filename": filename,
-            "chunks": len(chunks),
+            "chunks": len(chunks)
         }
 
+
     except HTTPException:
+
         raise
 
+
     except Exception as e:
+
         db.rollback()
+
         raise HTTPException(
             status_code=500,
             detail=f"Document processing failed: {str(e)}"
         )
 
+
+# --------------------------------------------------
+# LIST DOCUMENTS
+# --------------------------------------------------
+
 @app.get("/documents")
-def list_documents(db=Depends(get_db)):
+def list_documents(
+    db=Depends(get_db)
+):
+
     documents = (
         db.query(
             Document.id,
             Document.filename,
             Document.created_at,
-            func.count(DocumentChunk.id).label("chunk_count")
+            func.count(
+                DocumentChunk.id
+            ).label("chunk_count")
         )
         .outerjoin(
             DocumentChunk,
@@ -178,34 +493,59 @@ def list_documents(db=Depends(get_db)):
             Document.filename,
             Document.created_at
         )
-        .order_by(Document.created_at.desc())
+        .order_by(
+            Document.created_at.desc()
+        )
         .all()
     )
+
 
     return [
         {
             "id": str(document.id),
             "filename": document.filename,
             "created_at": document.created_at,
-            "chunk_count": document.chunk_count,
+            "chunk_count": document.chunk_count
         }
         for document in documents
     ]
+
+
+# --------------------------------------------------
+# GET SINGLE DOCUMENT
+# --------------------------------------------------
+
 @app.get("/documents/{document_id}")
-def get_document(document_id: str, db=Depends(get_db)):
-    document = db.query(Document).filter(
-        Document.id == document_id
-    ).first()
+def get_document(
+    document_id: str,
+    db=Depends(get_db)
+):
+
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id
+        )
+        .first()
+    )
+
 
     if not document:
+
         raise HTTPException(
             status_code=404,
             detail="Document not found"
         )
 
-    chunk_count = db.query(DocumentChunk).filter(
-        DocumentChunk.document_id == document.id
-    ).count()
+
+    chunk_count = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.document_id == document.id
+        )
+        .count()
+    )
+
 
     return {
         "id": str(document.id),
@@ -214,6 +554,17 @@ def get_document(document_id: str, db=Depends(get_db)):
         "chunk_count": chunk_count
     }
 
+
+# --------------------------------------------------
+# Run directly
+# --------------------------------------------------
+
 if __name__ == "__main__":
+
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000
+    )
