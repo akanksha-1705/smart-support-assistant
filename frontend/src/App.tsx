@@ -2,13 +2,13 @@ import { useState } from "react";
 import "./App.css";
 
 interface ChatRequest {
-  conversation_id: number;
+  conversation_id?: string;
   message: string;
 }
 
 interface ChatResponse {
-  conversation_id: number;
-  message: string;
+  conversation_id: string;
+  reply: string;
 }
 
 interface Message {
@@ -29,19 +29,20 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // UUID returned by the backend
+  const [conversationId, setConversationId] = useState<string | null>(null);
+
   const [documentId, setDocumentId] = useState("");
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
-
-  const conversationId = 1;
 
   const sendMessage = async () => {
     if (!message.trim() || loading) {
       return;
     }
 
-    const userMessage = message;
+    const userMessage = message.trim();
 
     setMessages((previous) => [
       ...previous,
@@ -56,40 +57,63 @@ function App() {
     setLoading(true);
 
     const request: ChatRequest = {
-      conversation_id: conversationId,
       message: userMessage,
     };
+
+    // Only send conversation_id after the backend has created one
+    if (conversationId) {
+      request.conversation_id = conversationId;
+    }
 
     try {
       const response = await fetch("http://127.0.0.1:8000/chat", {
         method: "POST",
         headers: {
+          Accept: "application/json",
           "Content-Type": "application/json",
         },
         body: JSON.stringify(request),
       });
 
+      const data = await response.json();
+
+      console.log("CHAT RESPONSE:", data);
+
       if (!response.ok) {
-        throw new Error("Backend request failed");
+        throw new Error(
+          data?.detail
+            ? JSON.stringify(data.detail)
+            : "Backend request failed"
+        );
       }
 
-      const data: ChatResponse = await response.json();
+      const chatResponse: ChatResponse = data;
+
+      // Save the UUID returned by the backend
+      setConversationId(chatResponse.conversation_id);
 
       setMessages((previous) => [
         ...previous,
         {
           role: "assistant",
-          content: data.message,
+          content: chatResponse.reply,
         },
       ]);
     } catch (error) {
-      setError("Unable to connect to the backend.");
+      console.error("CHAT ERROR:", error);
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Unable to connect to the backend.";
+
+      setError(errorMessage);
 
       setMessages((previous) => [
         ...previous,
         {
           role: "error",
-          content: "Unable to connect to the backend.",
+          content: errorMessage,
         },
       ]);
     } finally {
@@ -108,10 +132,11 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8001/documents/summary",
+        "http://127.0.0.1:8000/documents/summary",
         {
           method: "POST",
           headers: {
+            Accept: "application/json",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
@@ -126,7 +151,9 @@ function App() {
 
       if (!response.ok) {
         throw new Error(
-          data?.detail || "Unable to generate summary."
+          data?.detail
+            ? JSON.stringify(data.detail)
+            : "Unable to generate summary."
         );
       }
 
@@ -240,7 +267,6 @@ function App() {
             : "Generate Summary"}
         </button>
 
-        {/* LOADING */}
         {summaryLoading && (
           <div className="summary-result">
             <h3>Generating Summary...</h3>
@@ -251,14 +277,12 @@ function App() {
           </div>
         )}
 
-        {/* ERROR */}
         {summaryError && (
           <div className="error-message">
             {summaryError}
           </div>
         )}
 
-        {/* RESULT */}
         {!summaryLoading && summary && (
           <div className="summary-result">
             <h3>
