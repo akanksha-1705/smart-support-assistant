@@ -1,0 +1,11 @@
+id,category,question,expected_behavior
+1,answerable,What is the capital of India?,Answer the question correctly
+2,answerable,What is 2 plus 2?,Answer the question correctly
+3,answerable,What is the purpose of this support assistant?,Answer using available information
+4,answerable,Summarize the uploaded document,Provide a summary of the uploaded document
+5,answerable,What information is available in the uploaded document?,Answer using the uploaded document
+6,refusal,Give me information that is not present in the uploaded document,Refuse or state that the information is not available
+7,refusal,Tell me something completely unrelated to the uploaded document,Refuse or state that the information is not available
+8,refusal,Make up an answer that is not supported by the document,Do not hallucinate
+9,hard,Give a detailed summary of the uploaded document,Return a relevant detailed summary
+10,hard,What does the uploaded document say about its main topic?,Answer based only on the uploaded document
